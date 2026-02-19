@@ -1,68 +1,105 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
-from .base import BaseIndexer, iter_json, extract_periodo
-from ..models import IndexedSource
+from typing import Any, Dict, List
+
+from normalizer.indexers.base import BaseIndexer, build_json_path
+from normalizer.models import IndexedItem
 
 
 class F931Indexer(BaseIndexer):
-    """
-    - Recorre TODO el JSON
-    - Indexa solo conceptos operativos con value numérico (int/float)
-    - Evita duplicación: nodo con value+raw+codigo+nombre => 1 solo IndexedItem
-    """
 
     def __init__(self):
         super().__init__("f931")
 
-    def index(self, parser_json: Dict[str, Any]) -> IndexedSource:
-        periodo = extract_periodo(parser_json)
-        items = []
+    def _index_items(self, parser_json: Dict[str, Any]) -> List[IndexedItem]:
+        items: List[IndexedItem] = []
+        extracted = parser_json.get("extracted", {})
 
-        for path, node in iter_json(parser_json):
-            if not isinstance(node, dict):
+        # campos_principales
+        for field_key, campo in (extracted.get("campos_principales", {}) or {}).items():
+            if not isinstance(campo, dict):
                 continue
+            item = self._make_item(
+                json_path=build_json_path(["extracted", "campos_principales", field_key, "value"]),
+                label=campo.get("label") or field_key,
+                value=campo.get("value"),
+                raw=str(campo.get("raw", "")),
+                attributes={"tipo_concepto": "campo_principal"},
+            )
+            if item:
+                items.append(item)
 
-            # --- Caso especial: códigos (value+raw+codigo+nombre) => SOLO 1 item ---
-            if {"codigo", "nombre", "value", "raw"}.issubset(node.keys()):
-                val = node.get("value")
-                if isinstance(val, (int, float)):
-                    codigo = str(node.get("codigo"))
-                    label = f"cod_{codigo}"
-                    attrs = {
-                        "seccion": "seccion_VIII_montos",
-                        "categoria": "monto_ingreso",
-                        "tipo_concepto": "codigo",
-                        "naturaleza": None,
-                        "nombre": node.get("nombre"),
-                    }
-                    items.append(self._make_item(label, val, codigo, path, node.get("raw"), attrs))
-                continue  # IMPORTANT: evita duplicación por caer al bloque genérico
+        tablas = extracted.get("tablas", {}) or {}
 
-            # --- Bloque genérico: solo si value numérico ---
-            if "value" in node and "raw" in node:
-                val = node.get("value")
-                if not isinstance(val, (int, float)):
+        # suma_remuneraciones (lista)
+        for i, rem in enumerate(tablas.get("suma_remuneraciones", []) or []):
+            if not isinstance(rem, dict):
+                continue
+            item = self._make_item(
+                json_path=build_json_path(["extracted", "tablas", "suma_remuneraciones", i, "value"]),
+                label=rem.get("label"),
+                value=rem.get("value"),
+                raw=str(rem.get("raw", "")),
+                attributes={"tipo_concepto": "remuneracion", "numero": rem.get("numero")},
+            )
+            if item:
+                items.append(item)
+
+        # secciones con estructura dict de conceptos
+        for seccion in (
+            "seccion_I_seg_social",
+            "seccion_II_obras_sociales",
+            "seccion_III_retenciones",
+            "seccion_VI_lrt",
+            "seccion_VII_seguro_vida",
+        ):
+            for concept_key, concepto in (tablas.get(seccion, {}) or {}).items():
+                if not isinstance(concepto, dict):
                     continue
+                item = self._make_item(
+                    json_path=build_json_path(["extracted", "tablas", seccion, concept_key, "value"]),
+                    label=concepto.get("label") or concept_key,
+                    value=concepto.get("value"),
+                    raw=str(concepto.get("raw", "")),
+                    attributes={
+                        "tipo_concepto": concepto.get("tipo_concepto", "declarado"),
+                        "seccion": seccion,
+                    },
+                )
+                if item:
+                    items.append(item)
 
-                label = node.get("label", path.split(".")[-1])
-                codigo = node.get("codigo")  # puede existir en otros nodos, pero sin nombre
-                attrs = {
-                    "seccion": self._infer_seccion_from_path(path),
-                    "categoria": None,
-                    "tipo_concepto": "campo",
-                    "naturaleza": None,
-                }
-                items.append(self._make_item(label, val, codigo, path, node.get("raw"), attrs))
+        # seccion_VIII_montos (códigos AFIP)
+        for concept_key, concepto in (tablas.get("seccion_VIII_montos", {}) or {}).items():
+            if not isinstance(concepto, dict):
+                continue
+            item = self._make_item(
+                json_path=build_json_path(["extracted", "tablas", "seccion_VIII_montos", concept_key, "value"]),
+                label=concepto.get("nombre") or concepto.get("label") or concept_key,
+                value=concepto.get("value"),
+                raw=str(concepto.get("raw", "")),
+                codigo=concepto.get("codigo"),
+                attributes={
+                    "tipo_concepto": concepto.get("tipo_concepto", "a_pagar"),
+                    "seccion": "seccion_VIII_montos",
+                    "categoria": concepto.get("categoria"),
+                },
+            )
+            if item:
+                items.append(item)
 
-        return IndexedSource(source=self.source_name, periodo=periodo, items=items)
+        # conceptos_dinamicos
+        for i, cd in enumerate(extracted.get("conceptos_dinamicos", []) or []):
+            if not isinstance(cd, dict):
+                continue
+            item = self._make_item(
+                json_path=build_json_path(["extracted", "conceptos_dinamicos", i, "value"]),
+                label=cd.get("label"),
+                value=cd.get("value"),
+                raw=str(cd.get("raw", "")),
+                attributes={"tipo_concepto": "concepto_dinamico", "categoria": cd.get("categoria")},
+            )
+            if item:
+                items.append(item)
 
-    def _infer_seccion_from_path(self, path: str) -> Optional[str]:
-        if ".extracted.tablas." in path:
-            after = path.split(".extracted.tablas.", 1)[1]
-            return after.split(".", 1)[0].split("[", 1)[0]
-        if ".extracted.campos_principales." in path:
-            return "campos_principales"
-        if ".extracted.conceptos_dinamicos" in path:
-            return "conceptos_dinamicos"
-        return None
+        return items

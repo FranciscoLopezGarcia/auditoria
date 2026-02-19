@@ -1,0 +1,99 @@
+meta:
+  version: "1.0.0"
+  description: "Diccionario canónico px_laboral - fase 1 Excel"
+
+concepts:
+
+  empleados:
+    obligatorio: true
+    tolerancia: 0
+    tipo: "cantidad"
+    categoria: null
+    resolution_hint: {}
+    matchers:
+      f931:
+        - type: json_path
+          value: "extracted.campos_principales.empleados_en_nomina.value"
+      borrador:
+        - type: json_path
+          value: "extracted.campos_principales.cantidad_empleados.value"
+
+  remuneracion_total:
+    obligatorio: true
+    tolerancia: 0.01
+    tipo: "remuneracion"
+    categoria: null
+    resolution_hint: {}
+    matchers:
+      borrador:
+        - type: json_path
+          value: "extracted.campos_principales.rem_total.value"
+      f931:
+        - type: json_path
+          value: "extracted.tablas.suma_remuneraciones[0].value"
+
+  aportes_ss:
+    obligatorio: true
+    tolerancia: 0.01
+    tipo: "aporte"
+    categoria: "seguridad_social"
+    resolution_hint: {}
+    matchers:
+      f931:
+        - type: json_path
+          value: "extracted.tablas.seccion_I_seg_social.a1_total_aportes.value"
+
+  contribuciones_ss:
+    obligatorio: true
+    tolerancia: 0.01
+    tipo: "contribucion"
+    categoria: "seguridad_social"
+    resolution_hint: {}
+    matchers:
+      f931:
+        - type: json_path
+          value: "extracted.tablas.seccion_I_seg_social.contribuciones_ss_a_pagar.value"
+
+  aportes_os:
+    obligatorio: true
+    tolerancia: 0.01
+    tipo: "aporte"
+    categoria: "obra_social"
+    resolution_hint: {}
+    matchers:
+      f931:
+        - type: json_path
+          value: "extracted.tablas.seccion_II_obras_sociales.a1_total_aportes_os.value"
+
+  contribuciones_os:
+    obligatorio: true
+    tolerancia: 0.01
+    tipo: "contribucion"
+    categoria: "obra_social"
+    resolution_hint: {}
+    matchers:
+      f931:
+        - type: json_path
+          value: "extracted.tablas.seccion_II_obras_sociales.contribuciones_os_a_pagar.value"
+
+  lrt:
+    obligatorio: true
+    tolerancia: 0.01
+    tipo: "seguro"
+    categoria: "art"
+    resolution_hint: {}
+    matchers:
+      f931:
+        - type: json_path
+          value: "extracted.tablas.seccion_VI_lrt.lrt_total_a_pagar.value"
+
+  scvo:
+    obligatorio: true
+    tolerancia: 0.01
+    tipo: "seguro"
+    categoria: "vida"
+    resolution_hint: {}
+    matchers:
+      f931:
+        - type: json_path
+          value: "extracted.tablas.seccion_VII_seguro_vida.scvo_a_pagar.value"

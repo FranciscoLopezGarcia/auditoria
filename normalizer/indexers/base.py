@@ -1,102 +1,84 @@
 from __future__ import annotations
 
-from abc import ABC
-from typing import Dict, List, Any
-from ..models import (
-    IndexedSource,
-    CanonicalSourceModel,
-    CanonicalConceptEvidence,
-    CanonicalConceptValue,
-)
-from ..dictionary_loader import DictionaryModel, MatcherDef
-from ..matchers import matcher_matches
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional
+
+from normalizer.models import IndexedItem, IndexedSource
 
 
-class BaseNormalizer(ABC):
+def build_json_path(parts: List[Any]) -> str:
+    path = ""
+    for p in parts:
+        if isinstance(p, int):
+            path += f"[{p}]"
+        else:
+            path = f"{path}.{p}" if path else str(p)
+    return path
+
+
+def extract_periodo(metadata: Dict[str, Any]) -> Optional[str]:
+    iso = metadata.get("periodo_iso")
+    if iso and isinstance(iso, str) and len(iso) == 7 and "-" in iso:
+        return iso
+
+    for key in ("periodo_detectado", "periodo_display"):
+        val = metadata.get(key)
+        if val and isinstance(val, str) and "/" in val:
+            parts = val.strip().split("/")
+            if len(parts) == 2:
+                mm, yyyy = parts[0].zfill(2), parts[1]
+                if len(yyyy) == 4 and yyyy.isdigit() and mm.isdigit():
+                    return f"{yyyy}-{mm}"
+
+    return None
+
+
+class BaseIndexer(ABC):
+
     def __init__(self, source_name: str):
         self.source_name = source_name
 
-    def normalize(self, indexed: IndexedSource, dictionary: DictionaryModel) -> CanonicalSourceModel:
-        if indexed.source != self.source_name:
-            raise ValueError(f"Normalizer {self.source_name} recibió IndexedSource de {indexed.source}")
+    def index(self, parser_json: Dict[str, Any]) -> IndexedSource:
+        metadata = parser_json.get("metadata", {})
+        periodo = extract_periodo(metadata)
+        meta = {
+            "contribuyente": metadata.get("contribuyente"),
+            "cuit": metadata.get("cuit"),
+            "tipo_documento": metadata.get("tipo_documento"),
+            "fecha_emision": metadata.get("fecha_emision"),
+        }
 
-        conceptos: Dict[str, CanonicalConceptValue] = {}
-        warnings: List[Dict[str, Any]] = []
+        raw_items = self._index_items(parser_json)
 
-        for canonical_key, concept_def in dictionary.concepts.items():
-            matchers = concept_def.matchers.get(self.source_name, []) or []
-            matches = self._find_matches(indexed, matchers)
+        seen: Dict[str, bool] = {}
+        items: List[IndexedItem] = []
+        for item in raw_items:
+            if item.json_path not in seen:
+                seen[item.json_path] = True
+                items.append(item)
 
-            if len(matches) == 1:
-                item = matches[0]
+        return IndexedSource(source=self.source_name, periodo=periodo, items=items, meta=meta)
 
-                # VALIDACIÓN OBLIGATORIA: valor numérico
-                if not isinstance(item.value, (int, float)):
-                    warnings.append({
-                        "code": "INVALID_VALUE_TYPE",
-                        "concept": canonical_key,
-                        "json_path": item.json_path,
-                        "value_type": type(item.value).__name__,
-                    })
-                    continue
+    @abstractmethod
+    def _index_items(self, parser_json: Dict[str, Any]) -> List[IndexedItem]:
+        ...
 
-                if canonical_key in conceptos:
-                    warnings.append({
-                        "code": "DUPLICATE_CANONICAL_KEY",
-                        "detail": f"Clave duplicada: {canonical_key}",
-                    })
-                    continue
-
-                evidencia = CanonicalConceptEvidence(
-                    label_original=item.label,
-                    codigo=item.codigo,
-                    json_path=item.json_path,
-                    raw=item.raw,
-                    attributes=item.attributes,
-                )
-                conceptos[canonical_key] = CanonicalConceptValue(
-                    valor=item.value,  # NO modificar
-                    evidencia=evidencia,
-                )
-
-            elif len(matches) > 1:
-                warnings.append({
-                    "code": "AMBIGUOUS_MATCH",
-                    "concept": canonical_key,
-                    "count": len(matches),
-                    "matches": [
-                        {"label": m.label, "codigo": m.codigo, "json_path": m.json_path}
-                        for m in matches[:10]
-                    ],
-                })
-
-            else:
-                if concept_def.obligatorio:
-                    warnings.append({
-                        "code": "MISSING_REQUIRED",
-                        "concept": canonical_key,
-                    })
-
-        variables_contables = self._build_variables_contables(indexed, conceptos)
-
-        return CanonicalSourceModel(
-            source=indexed.source,
-            periodo=indexed.periodo,   # NO tocar formato
-            conceptos=conceptos,
-            variables_contables=variables_contables,
-            warnings=warnings,
+    def _make_item(
+        self,
+        json_path: str,
+        label: Optional[str],
+        value: Any,
+        raw: str,
+        codigo: Optional[str] = None,
+        attributes: Optional[Dict[str, Any]] = None,
+    ) -> Optional[IndexedItem]:
+        if value is None or not isinstance(value, (int, float)):
+            return None
+        return IndexedItem(
+            json_path=json_path,
+            label=label,
+            value=float(value),
+            raw=raw,
+            codigo=codigo,
+            attributes=attributes or {},
         )
-
-    def _find_matches(self, indexed: IndexedSource, matchers: List[MatcherDef]):
-        if not matchers:
-            return []
-        matched_items = []
-        for item in indexed.items:
-            for matcher in matchers:
-                if matcher_matches(item, matcher):
-                    matched_items.append(item)
-                    break
-        return matched_items
-
-    def _build_variables_contables(self, indexed: IndexedSource, conceptos: Dict[str, CanonicalConceptValue]):
-        return []
