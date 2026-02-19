@@ -1,0 +1,131 @@
+# ============================================
+# PYTHON
+# ============================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# C extensions
+*.so
+
+# Virtual environments
+venv/
+.env/
+.env.*
+.venv/
+env/
+ENV/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Mypy / type check
+.mypy_cache/
+.dmypy.json
+
+# Ruff / linters
+.ruff_cache/
+
+# ============================================
+# IDEs / EDITORS
+# ============================================
+
+.vscode/
+.idea/
+*.code-workspace
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Mac
+.DS_Store
+
+# ============================================
+# LOGS
+# ============================================
+
+*.log
+logs/
+*.sqlite3
+
+# ============================================
+# TEMP FILES
+# ============================================
+
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# ============================================
+# EXCEL / OFFICE TEMP FILES
+# ============================================
+
+~$*.xlsx
+~$*.xls
+~$*.xlsm
+*.xlsb
+
+# ============================================
+# OUTPUTS GENERADOS
+# ============================================
+
+output/
+generated/
+exports/
+reports/
+
+# ============================================
+# ARCHIVOS DE PRUEBA / DATA LOCAL
+# ============================================
+
+data/
+sample_data/
+test_data/
+*.pdf
+*.PDF
+*.json
+
+# (Si querés permitir dictionary.yaml, agregalo abajo)
+!dictionary.yaml
+
+# ============================================
+# DOCKER (futuro)
+# ============================================
+
+*.env
+docker-compose.override.yml
+
+# ============================================
+# BUILD
+# ============================================
+
+build/
+dist/
+*.egg-info/
+
+# ============================================
+# CACHE
+# ============================================
+
+.cache/
+
+# ============================================
+# Jupyter (por si acaso)
+# ============================================
+
+.ipynb_checkpoints/
+
+# ============================================
+# TEST RUNNER OUTPUT
+# ============================================
+
+test_output/
+

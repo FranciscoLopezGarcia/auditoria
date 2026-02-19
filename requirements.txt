@@ -1,0 +1,7 @@
+# Extracción de texto desde PDFs
+# Principal: expone coordenadas X/Y por palabra, necesario para separar columnas DEBE/HABER
+pdfplumber>=0.11.0
+
+# Fallback de extracción si pdfplumber falla
+# También útil para PDFs con layouts complejos o protegidos
+pymupdf>=1.24.0
