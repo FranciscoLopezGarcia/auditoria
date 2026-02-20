@@ -1,0 +1,19 @@
+FACYS:
+  match_any:
+    - facys
+    - faecys
+
+CEC:
+  match_any:
+    - cec
+
+CUOTA ALIMENTARIA:
+  match_any:
+    - cuota alimentaria
+
+SINDICATO:
+  match_any:
+    - sindicato
+    - cuota sindical
+    - uocra
+    - ieric

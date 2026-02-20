@@ -8,6 +8,98 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Compiled files
+*.so
+*.dll
+*.dylib
+*.pyd
+
+# Python environment management
+venv/
+.env/
+.env.*
+.venv/
+env/
+ENV/
+.python-version
+
+# PyInstaller
+*.spec
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Test/Type/Cache
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VSCode/IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Temp/Backup
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Excel/Office temp
+~$*.xlsx
+~$*.xls
+~$*.xlsm
+*.xlsb
+
+# Output/Generated
+output/
+generated/
+exports/
+reports/
+
+# Test/Data
+data/
+sample_data/
+test_data/
+*.pdf
+*.PDF
+*.json
+
+# Permitir dictionary.yaml
+!normalizer/dictionary.yaml
+
+# Docker
+*.env
+docker-compose.override.yml
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Test runner output
+test_output/
+
 # C extensions
 *.so
 

@@ -1,0 +1,82 @@
+entries:
+
+  # --- Encabezado / Datos Generales ---
+  - row: 8
+    label: "ORIGINAL / RECTIFICATIVA"
+    path: "sources_raw.f931.extracted.campos_principales.indicador_rectificativa.descripcion"
+    type: text
+
+  - row: 9
+    label: "CANTIDAD DE EMPLEADOS"
+    path: "sources_raw.f931.extracted.campos_principales.empleados_en_nomina.value"
+
+  - row: 10
+    label: "FECHA DE PRESENTACIÓN"
+    path: "sources_raw.f931.metadata.fecha_emision"
+    type: text
+
+  # --- Remuneraciones ---
+  - row: 11
+    label: "REMUNERACIÓN 2"
+    path: "sources_raw.f931.extracted.tablas.suma_remuneraciones[1].value"
+
+  - row: 12
+    label: "CONCEPTOS NO REMUNERATIVOS"
+    path: "sources_raw.borrador.extracted.campos_principales.conceptos_no_remunerativos.value"
+
+  - row: 13
+    label: "REMUNERACIÓN 10"
+    path: "sources_raw.f931.extracted.tablas.suma_remuneraciones[9].value"
+
+  # --- Sección I: Seguridad Social (inputs para fórmulas) ---
+
+  # NOTA: Filas 14 (APORTES SUSS), 15 (APORTES A FAVOR),
+  #       16 (APORTES SS A PAGAR), 17 (CONTRIBUCIONES SUSS),
+  #       21 (CONTRIBUCIONES SS A PAGAR) son FÓRMULAS → no se mapean.
+
+  - row: 18
+    label: "EXCEDENTES CONT. A FAVOR"
+    # En seccion_I no hay campo explícito de excedentes.
+    # b2_asig_compensadas es el más cercano. VALIDAR con la planilla real.
+    path: "sources_raw.f931.extracted.tablas.seccion_I_seg_social.b2_asig_compensadas.value"
+
+  - row: 19
+    label: "DETRACCIÓN ART. 23 LEY 27.541"
+    # El F931 tiene ley_27430_monto_detraido en seccion_VI_lrt.
+    # La ley 27.541 art.23 puede estar modelada por el mismo campo.
+    # VALIDAR: si corresponde a otro campo, ajustar el path.
+    path: "sources_raw.f931.extracted.tablas.seccion_VI_lrt.ley_27430_monto_detraido.value"
+
+  - row: 20
+    label: "RETENCIONES (Seg. Social)"
+    path: "sources_raw.f931.extracted.tablas.seccion_III_retenciones.retenciones_aplicadas_ss.value"
+
+  # --- Códigos AFIP / Otros ---
+  - row: 22
+    label: "OTROS (EJ. CONTRIBUCIONES RENATRE)"
+    path: "sources_raw.f931.extracted.tablas.seccion_VIII_montos.cod_360.value"
+
+  - row: 23
+    label: "OTROS (EJ. SEG. SEPELIO UATRE)"
+    path: "sources_raw.f931.extracted.tablas.seccion_VIII_montos.cod_935.value"
+
+  # --- Sección II: Obras Sociales (inputs) ---
+
+  # NOTA: Filas 24 (APORTES O.S.), 25 (APORTES A FAVOR OS),
+  #       27 (CONTRIBUCIONES O.S.) son FÓRMULAS → no se mapean.
+
+  - row: 26
+    label: "APORTES OBRA SOCIAL A PAGAR"
+    path: "sources_raw.f931.extracted.tablas.seccion_II_obras_sociales.a3_aportes_os_a_pagar.value"
+
+  - row: 28
+    label: "EXCEDENTES CONT. A FAVOR (O.S.)"
+    path: "sources_raw.f931.extracted.tablas.seccion_II_obras_sociales.b2_excedentes_contrib_os.value"
+
+  - row: 29
+    label: "RETENCIONES (Obra Social)"
+    path: "sources_raw.f931.extracted.tablas.seccion_III_retenciones.retenciones_aplicadas_os.value"
+
+  - row: 30
+    label: "CONTIBUCIONES OBRA SOCIAL A PAGAR"
+    path: "sources_raw.f931.extracted.tablas.seccion_II_obras_sociales.contribuciones_os_a_pagar.value"
