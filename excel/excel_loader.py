@@ -1,22 +1,27 @@
 """
-ExcelLoader v4 — Escribe datos en las hojas '931' y 'Analisis General'.
+ExcelLoader v6
 
-Flujo:
-  1. Lee el periodo del consolidado → calcula mes y columna
-  2. Copia template → output (template nunca se modifica)
-  3. Escribe en hoja '931': datos del F931 (aportes, contribuciones, etc.)
-  4. Escribe en 'Analisis General': solo celdas de input directo
-     (conceptos no remun, RENATRE, UATRE, dinámicos)
-  5. Las fórmulas de 'Analisis General' que referencian '931' se
-     recalculan automáticamente cuando el usuario abre en Excel.
+Modos soportados:
+  - build_from_template()  → crea Excel nuevo desde template
+  - update_existing()      → actualiza Excel ya existente
+
+Protecciones:
+  - No pisa fórmulas
+  - No sobreescribe valores existentes con 0
+  - No escribe si value es None
+
+Fix crítico:
+  - Fuerza recálculo en Excel al abrir (fullCalcOnLoad + calcMode=auto)
+    para evitar que openpyxl deje en blanco/0 los cached results de fórmulas.
 """
 
-import re
 import shutil
 from pathlib import Path
+from datetime import datetime
+
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
-from datetime import datetime
+
 from excel.excel_mapper import ExcelMapper
 
 
@@ -24,74 +29,108 @@ class ExcelLoader:
 
     SHEET_931 = "931"
     SHEET_ANALISIS = "Analisis General"
-    HEADER_ROW = 7       # Fila de encabezados de mes en Analisis General
-    FIRST_DATA_ROW = 8   # Primera fila de datos en Analisis General
-    LAST_DATA_ROW = 38   # Última fila de datos en Analisis General
+    HEADER_ROW = 7
+    FIRST_DATA_ROW = 8
+    LAST_DATA_ROW = 38
 
     def __init__(self, template_path: str, consolidated_json: dict):
-        self.template_path = str(Path(template_path).resolve())
+        self.template_path = str(Path(template_path).resolve()) if template_path else None
         self.data = consolidated_json
         self.mapper = ExcelMapper(consolidated_json)
 
-    # ---------------------------------------------------------
-    # Método principal
-    # ---------------------------------------------------------
-    def update_excel(self, output_path: str):
+        if "periodo_iso" not in self.data:
+            raise ValueError("El JSON consolidado no contiene 'periodo_iso'.")
+
+        self.periodo = self.data["periodo_iso"]
+        self.year, self.month = [int(x) for x in self.periodo.split("-")]
+
+    # =========================================================
+    # PUBLIC METHODS
+    # =========================================================
+
+    def build_from_template(self, output_path: str):
+        """
+        Crea un Excel nuevo copiando el template.
+        """
+        if not self.template_path:
+            raise ValueError("Template path no definido.")
 
         output_path = str(Path(output_path).resolve())
 
         if output_path == self.template_path:
-            raise ValueError(
-                "output_path no puede ser el mismo que template_path.\n"
-                "openpyxl destruye cached values de fórmulas al guardar.\n"
-                f"Template: {self.template_path}"
-            )
+            raise ValueError("El output no puede ser el mismo que el template.")
 
-        # --- Paso 1: Determinar periodo y columna ---
-        periodo = self.data["periodo_iso"]
-        year, month = [int(x) for x in periodo.split("-")]
-
-        # Columna en Analisis General (detectada desde Títulos!B3)
-        ag_col = self._detect_analisis_column(month)
-        print(f"Periodo: {periodo} → Analisis General col {ag_col}")
-
-        # --- Paso 2: Copiar template ---
         shutil.copy2(self.template_path, output_path)
-        print(f"Template copiado a: {output_path}")
+        print(f"Template copiado → {output_path}")
 
-        # --- Paso 3: Escribir ---
-        wb = load_workbook(output_path)
+        self._process_workbook(output_path)
 
-        written_931 = self._write_931(wb, month)
+    def update_existing(self, excel_path: str):
+        """
+        Actualiza un Excel existente.
+        """
+        excel_path = str(Path(excel_path).resolve())
+
+        if not Path(excel_path).exists():
+            raise FileNotFoundError(f"No existe el Excel: {excel_path}")
+
+        print(f"UPDATE → {excel_path}")
+        self._process_workbook(excel_path)
+
+    # =========================================================
+    # CORE WORKBOOK PROCESSOR
+    # =========================================================
+
+    def _process_workbook(self, excel_path: str):
+        # Abrimos workbook target
+        wb = load_workbook(excel_path)
+
+        # Detectar columna del mes (preferimos el workbook target, no el template)
+        ag_col = self._detect_analisis_column(month=self.month, wb=wb)
+        print(f"Periodo {self.periodo} → Columna Analisis General: {ag_col}")
+
+        written_931 = self._write_931(wb)
         written_ag = self._write_analisis_general(wb, ag_col)
 
         total = written_931 + written_ag
-        print(f"\nResumen: {written_931} celdas en '931', "
-              f"{written_ag} celdas en 'Analisis General', "
-              f"{total} total")
+
+        print(
+            f"\nResumen:\n"
+            f"  931: {written_931} celdas\n"
+            f"  Analisis General: {written_ag} celdas\n"
+            f"  Total: {total}"
+        )
+
+        # FIX: Forzar que Excel recalcule todo al abrir
+        # (evita que queden en 0/vacío los resultados cacheados de fórmulas)
+        try:
+            wb.calculation.calcMode = "auto"
+            wb.calculation.fullCalcOnLoad = True
+        except Exception:
+            # No rompe si alguna versión de openpyxl cambia
+            pass
 
         try:
-            wb.save(output_path)
-            print(f"Archivo guardado en: {output_path}")
+            wb.save(excel_path)
+            print(f"Guardado OK → {excel_path}")
         except PermissionError:
-            raise PermissionError(
-                "No se pudo guardar. ¿El archivo está abierto en Excel?"
-            )
+            raise PermissionError("No se pudo guardar. ¿Está abierto en Excel?")
 
         wb.close()
 
-    # ---------------------------------------------------------
-    # Escritura en hoja '931'
-    # ---------------------------------------------------------
-    def _write_931(self, wb, month: int) -> int:
+    # =========================================================
+    # WRITE 931
+    # =========================================================
 
+    def _write_931(self, wb) -> int:
         if self.SHEET_931 not in wb.sheetnames:
             raise ValueError(f"No existe la hoja '{self.SHEET_931}'")
 
         ws = wb[self.SHEET_931]
-        values = self.mapper.get_931_values(month)
+        values = self.mapper.get_931_values(self.month)
 
-        print(f"\nEscribiendo en hoja '{self.SHEET_931}':")
+        print(f"\nEscribiendo hoja '{self.SHEET_931}'")
+
         written = 0
 
         for item in values:
@@ -99,31 +138,47 @@ class ExcelLoader:
             col = item["col"]
             value = item["value"]
             label = item["label"]
-            col_letter = get_column_letter(col)
 
-            ws.cell(row=row, column=col, value=value)
+            cell = ws.cell(row=row, column=col)
+
+            # No pisar fórmulas
+            if cell.data_type == "f":
+                continue
+
+            # No sobreescribir con 0 si ya hay dato
+            if isinstance(value, (int, float)) and value == 0:
+                if cell.value not in (None, "", 0):
+                    continue
+
+            # No escribir None
+            if value is None:
+                continue
+
+            cell.value = value
+
+            col_letter = get_column_letter(col)
             tipo = "texto" if isinstance(value, str) else "numérico"
             print(f"  {col_letter}{row} | {label} → {value} ({tipo})")
             written += 1
 
         return written
 
-    # ---------------------------------------------------------
-    # Escritura en 'Analisis General' (solo inputs directos)
-    # ---------------------------------------------------------
-    def _write_analisis_general(self, wb, month_col: int) -> int:
+    # =========================================================
+    # WRITE ANALISIS GENERAL
+    # =========================================================
 
+    def _write_analisis_general(self, wb, month_col: int) -> int:
         if self.SHEET_ANALISIS not in wb.sheetnames:
             raise ValueError(f"No existe la hoja '{self.SHEET_ANALISIS}'")
 
         ws = wb[self.SHEET_ANALISIS]
 
-        print(f"\nEscribiendo en hoja '{self.SHEET_ANALISIS}' (col {month_col}):")
+        print(f"\nEscribiendo hoja '{self.SHEET_ANALISIS}' col {month_col}")
+
         written = 0
 
         for row_num in range(self.FIRST_DATA_ROW, self.LAST_DATA_ROW + 1):
-
-            concepto_cell = ws.cell(row=row_num, column=2)
+            concepto_cell = ws.cell(row=row_num, column=2)  # B
             if not concepto_cell.value:
                 continue
 
@@ -139,58 +194,57 @@ class ExcelLoader:
             if value is None:
                 continue
 
+            # No sobreescribir con 0 si ya hay dato
+            if isinstance(value, (int, float)) and value == 0:
+                if target_cell.value not in (None, "", 0):
+                    continue
+
             target_cell.value = value
+
             tipo = "texto" if isinstance(value, str) else "numérico"
             print(f"  Fila {row_num} | {concepto_text} → {value} ({tipo})")
             written += 1
 
         return written
 
-    # ---------------------------------------------------------
-    # Detección de columna en Analisis General
-    # ---------------------------------------------------------
-    def _detect_analisis_column(self, month: int) -> int:
+    # =========================================================
+    # DETECT COLUMN
+    # =========================================================
+
+    def _detect_analisis_column(self, month: int, wb=None) -> int:
         """
-        Determina la columna del mes en 'Analisis General'.
-
-        Estrategia 1: Lee Títulos!B3 (ancla hardcoded) → col = mes + 3
-        Estrategia 2: data_only para cached values
-        Estrategia 3: Buscar referencia a Títulos!B4 en fila de headers
+        Prioridad:
+          1) Buscar en workbook target (wb) por datetime en fila HEADER_ROW
+          2) Fallback a template (Títulos!B3 -> month+3)
         """
 
-        # Estrategia 1: Ancla Títulos!B3
-        try:
-            wb = load_workbook(self.template_path, data_only=False)
-            if "Títulos" in wb.sheetnames:
-                anchor = wb["Títulos"].cell(row=3, column=2).value
-                wb.close()
-                if isinstance(anchor, datetime):
-                    col = month + 3
-                    if 4 <= col <= 15:
-                        print(f"Ancla Títulos!B3 = {anchor.date()} → col {col}")
-                        return col
-            else:
-                wb.close()
-        except Exception:
-            pass
-
-        # Estrategia 2: Cached values
-        try:
-            wb = load_workbook(self.template_path, data_only=True)
+        # ---- 1) Buscar en WB target (más confiable si estás actualizando un Excel ya armado)
+        if wb is not None and self.SHEET_ANALISIS in wb.sheetnames:
             ws = wb[self.SHEET_ANALISIS]
-            year_from_periodo = int(self.data["periodo_iso"].split("-")[0])
             for col_cell in ws[self.HEADER_ROW]:
-                if isinstance(col_cell.value, datetime):
-                    if col_cell.value.month == month and col_cell.value.year == year_from_periodo:
-                        result = col_cell.column
-                        wb.close()
-                        print(f"Cached value → col {result}")
-                        return result
-            wb.close()
-        except Exception:
-            pass
+                val = col_cell.value
+                if isinstance(val, datetime):
+                    if val.year == self.year and val.month == month:
+                        return col_cell.column
+
+        # ---- 2) Fallback a template por ancla Títulos!B3
+        if not self.template_path:
+            raise ValueError("No se pudo detectar columna: no hay wb válido ni template_path.")
+
+        wb_tpl = load_workbook(self.template_path, data_only=False)
+        if "Títulos" not in wb_tpl.sheetnames:
+            wb_tpl.close()
+            raise ValueError("No existe hoja 'Títulos' en el template.")
+
+        anchor = wb_tpl["Títulos"].cell(row=3, column=2).value  # B3
+        wb_tpl.close()
+
+        if isinstance(anchor, datetime):
+            col = month + 3  # D=4 para enero, ... O=15 para dic
+            if 4 <= col <= 15:
+                return col
 
         raise ValueError(
-            f"No se pudo determinar la columna para mes {month}.\n"
-            "Verificar que el template tenga la hoja 'Títulos' con B3 = fecha."
+            f"No se pudo determinar la columna para mes {month}. "
+            "Verificar headers en Analisis General o ancla Títulos!B3."
         )
