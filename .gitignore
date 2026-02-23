@@ -184,6 +184,10 @@ test_data/
 *.pdf
 *.PDF
 *.json
+*.xlsx
+*.csv
+*.xls
+
 
 # (Si querés permitir dictionary.yaml, agregalo abajo)
 !dictionary.yaml
