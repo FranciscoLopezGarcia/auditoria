@@ -1,0 +1,119 @@
+# ============================================================
+# excel_mapping_931.yaml — Mapeo de datos F931 a hoja '931'
+# ============================================================
+#
+# La hoja '931' tiene 12 bloques de 8 columnas, uno por mes.
+# El bloque base se calcula: base = 2 + (mes - 1) × 8
+#
+# Dentro de cada bloque:
+#   base+2 = columna Seg. Social (SS)
+#   base+3 = columna Check (rectificativa)
+#   base+4 = columna General (empleados, remuneraciones)
+#   base+6 = columna Obras Sociales (OS)
+#
+# Cada entry define:
+#   row:        fila en la hoja '931'
+#   col_offset: offset desde el base del bloque del mes
+#   path:       ruta dot-notation en el consolidated JSON
+#   type:       "numeric" (default) | "text" | "rectificativa"
+#   label:      documentación (no se usa para match)
+# ============================================================
+
+entries:
+
+  # --- Datos generales ---
+  - row: 4
+    col_offset: 3
+    label: "Indicador Rectificativa (string para IF)"
+    path: "sources_raw.f931.extracted.campos_principales.indicador_rectificativa.raw"
+    type: rectificativa  # Formatea como "Orig. (0) - Rect. (1/9): {raw}"
+
+  - row: 5
+    col_offset: 2
+    label: "Fecha de presentación"
+    path: "sources_raw.f931.metadata.fecha_emision"
+    type: text
+
+  - row: 6
+    col_offset: 4
+    label: "Empleados en nómina"
+    path: "sources_raw.f931.extracted.campos_principales.empleados_en_nomina.value"
+
+  # --- Remuneraciones (col General = base+4) ---
+  - row: 8
+    col_offset: 4
+    label: "Suma de Rem. 2"
+    path: "sources_raw.f931.extracted.tablas.suma_remuneraciones[1].value"
+
+  - row: 16
+    col_offset: 4
+    label: "Suma de Rem. 10"
+    path: "sources_raw.f931.extracted.tablas.suma_remuneraciones[9].value"
+
+  # --- Sección I: Seguridad Social (col SS = base+2) ---
+  - row: 19
+    col_offset: 2
+    label: "Total aportes SS"
+    path: "sources_raw.f931.extracted.tablas.seccion_I_seg_social.a1_total_aportes.value"
+
+  - row: 20
+    col_offset: 2
+    label: "Aportes a favor SS"
+    path: "sources_raw.f931.extracted.tablas.seccion_I_seg_social.a2_aportes_a_favor.value"
+
+  - row: 24
+    col_offset: 2
+    label: "Total contribuciones SS"
+    path: "sources_raw.f931.extracted.tablas.seccion_I_seg_social.b1_total_contribuciones.value"
+
+  - row: 25
+    col_offset: 2
+    label: "Excedentes/compensadas SS"
+    path: "sources_raw.f931.extracted.tablas.seccion_I_seg_social.b2_asig_compensadas.value"
+
+  - row: 26
+    col_offset: 2
+    label: "Detracción Ley 27.430"
+    path: "sources_raw.f931.extracted.tablas.seccion_VI_lrt.ley_27430_monto_detraido.value"
+
+  - row: 29
+    col_offset: 2
+    label: "Retenciones aplicadas SS"
+    path: "sources_raw.f931.extracted.tablas.seccion_III_retenciones.retenciones_aplicadas_ss.value"
+
+  # --- Sección II: Obras Sociales (col OS = base+6) ---
+  - row: 19
+    col_offset: 6
+    label: "Total aportes OS"
+    path: "sources_raw.f931.extracted.tablas.seccion_II_obras_sociales.a1_total_aportes_os.value"
+
+  - row: 20
+    col_offset: 6
+    label: "Aportes a favor OS"
+    path: "sources_raw.f931.extracted.tablas.seccion_II_obras_sociales.a2_aportes_a_favor_os.value"
+
+  - row: 23
+    col_offset: 6
+    label: "Total contribuciones OS"
+    path: "sources_raw.f931.extracted.tablas.seccion_II_obras_sociales.b1_total_contribuciones_os.value"
+
+  - row: 24
+    col_offset: 6
+    label: "Excedentes OS"
+    path: "sources_raw.f931.extracted.tablas.seccion_II_obras_sociales.b2_excedentes_contrib_os.value"
+
+  - row: 27
+    col_offset: 6
+    label: "Retenciones aplicadas OS"
+    path: "sources_raw.f931.extracted.tablas.seccion_III_retenciones.retenciones_aplicadas_os.value"
+
+  # --- LRT y Seguro (mixtos) ---
+  - row: 44
+    col_offset: 2
+    label: "ART / LRT total a pagar"
+    path: "sources_raw.f931.extracted.tablas.seccion_VI_lrt.lrt_total_a_pagar.value"
+
+  - row: 44
+    col_offset: 6
+    label: "Seguro Colectivo Vida Obligatorio"
+    path: "sources_raw.f931.extracted.tablas.seccion_VII_seguro_vida.scvo_a_pagar.value"

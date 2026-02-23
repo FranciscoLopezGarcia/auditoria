@@ -1,0 +1,15 @@
+entries:
+
+  - row: 12
+    label: "CONCEPTOS NO REMUNERATIVOS"
+    path: "sources_raw.borrador.extracted.campos_principales.conceptos_no_remunerativos.value"
+
+  - row: 22
+    label: "OTROS (EJ. CONTRIBUCIONES RENATRE)"
+    path: "sources_raw.f931.extracted.tablas.seccion_VIII_montos.cod_360.value"
+
+  - row: 23
+    label: "OTROS (EJ. SEG. SEPELIO UATRE)"
+    path: "sources_raw.f931.extracted.tablas.seccion_VIII_montos.cod_935.value"
+
+# Filas 34-37 (dinámicos) se resuelven via excel_mapping_dynamic.yaml

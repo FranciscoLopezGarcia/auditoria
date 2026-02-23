@@ -1,3 +1,20 @@
+# ============================================================
+# excel_mapping_structured.yaml — Mapeo ROW-BASED
+# ============================================================
+# Cada entrada define:
+#   row:   número de fila en Excel (columna B)
+#   label: texto esperado (solo documentación, no se usa para match)
+#   path:  ruta dot-notation en el consolidated JSON
+#          - Soporta [N] para acceso a arrays (ej: suma_remuneraciones[1])
+#   type:  "numeric" (default) | "text"
+#
+# IMPORTANTE:
+#   - Solo se mapean filas INPUT (no fórmulas).
+#   - Si el path no resuelve → no se escribe nada.
+#   - Las filas fórmula (14,15,16,17,21,24,25,27,31,32,33,38)
+#     son detectadas por openpyxl y nunca se tocan.
+# ============================================================
+
 entries:
 
   # --- Encabezado / Datos Generales ---
