@@ -1,235 +1,262 @@
-import os
-import re
+"""
+pipeline.py — Core pipeline for Px Laboral automation.
+
+Public API:
+    process_period(pdf_paths, period) -> Path
+
+Executes the full pipeline in-process (no subprocess, no CLI):
+    1. Parse PDFs → parser JSON dicts
+    2. Index + Normalize → CanonicalSourceModel per source
+    3. Consolidate → ConsolidatedTechnicalModel
+    4. Write Excel → output file
+
+Returns the Path to the generated Excel file.
+"""
+
+from __future__ import annotations
+
 import json
+import logging
 import shutil
-import subprocess
+from dataclasses import asdict
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+# Parsers
+from backend.core.parsers.asiento_parser import parse as parse_asiento
+from backend.core.parsers.borrador_parser import parse as parse_borrador
+from backend.core.parsers.f931_parser import parse as parse_f931
+
+# Normalizer components
+from backend.core.normalizer.dictionary_loader import load_dictionary_yaml
+from backend.core.normalizer.indexers.f931 import F931Indexer
+from backend.core.normalizer.indexers.borrador import BorradorIndexer
+from backend.core.normalizer.indexers.asiento import AsientoIndexer
+from backend.core.normalizer.normalizers.f931 import F931Normalizer
+from backend.core.normalizer.normalizers.borrador import BorradorNormalizer
+from backend.core.normalizer.normalizers.asiento import AsientoNormalizer
+from backend.core.normalizer.models import CanonicalSourceModel
+
+# Consolidator
+from backend.core.normalizer.consolidator import ConsolidatorV2, ConsolidatedTechnicalModel
+
+# Excel
+from backend.core.excel.excel_loader import ExcelLoader
+
+logger = logging.getLogger(__name__)
+
+# Dictionary YAML lives alongside the normalizer package
+_DICTIONARY_PATH = Path(__file__).parent / "normalizer" / "dictionary.yaml"
+
+# Default template location (project root)
+_DEFAULT_TEMPLATE = Path(__file__).resolve().parent.parent.parent / "Px Laboral Template.xlsx"
 
 
-# -----------------------------------------------------
-# DATA MODEL
-# -----------------------------------------------------
+# ─────────────────────────────────────────────────────────
+# Helpers: PDF type detection
+# ─────────────────────────────────────────────────────────
 
-@dataclass
-class PeriodBundle:
-    periodo: str
-    f931: Optional[str] = None
-    borrador: Optional[str] = None
-    asiento: Optional[str] = None
-    status: str = "PENDING"
-    diagnostics: Dict = field(default_factory=dict)
+def _detect_type(pdf_path: Path) -> Optional[str]:
+    """Detect document type from filename. Returns 'f931', 'borrador', 'asiento', or None."""
+    name = pdf_path.name.lower()
+    if "f931" in name or "931" in name:
+        return "f931"
+    if "borrador" in name or "borra" in name:
+        return "borrador"
+    if "asiento" in name:
+        return "asiento"
+    return None
 
 
-# -----------------------------------------------------
-# ORCHESTRATOR A
-# -----------------------------------------------------
+_PARSERS = {
+    "f931": parse_f931,
+    "borrador": parse_borrador,
+    "asiento": parse_asiento,
+}
 
-class OrchestratorA:
+_INDEXERS = {
+    "f931": F931Indexer,
+    "borrador": BorradorIndexer,
+    "asiento": AsientoIndexer,
+}
 
-    def __init__(
-        self,
-        project_root: str,
-        temp_input_dir: str = "temp_inputs",
-        output_dir: str = "output"
-    ):
-        self.project_root = Path(project_root)
-        self.temp_input_dir = self.project_root / temp_input_dir
-        self.output_dir = self.project_root / output_dir
+_NORMALIZERS = {
+    "f931": F931Normalizer,
+    "borrador": BorradorNormalizer,
+    "asiento": AsientoNormalizer,
+}
 
-        self.temp_input_dir.mkdir(exist_ok=True)
-        self.output_dir.mkdir(exist_ok=True)
 
-    # -----------------------------------------------------
-    # PUBLIC ENTRYPOINT
-    # -----------------------------------------------------
+# ─────────────────────────────────────────────────────────
+# Step 1: Parse
+# ─────────────────────────────────────────────────────────
 
-    def run(self, pdf_paths: List[str]) -> Dict[str, PeriodBundle]:
+def _run_parsers(pdf_paths: List[Path]) -> Dict[str, Dict[str, Any]]:
+    """
+    Parse each PDF and return {source_type: parser_json_dict}.
+    Skips unrecognized files with a warning.
+    """
+    results: Dict[str, Dict[str, Any]] = {}
 
-        bundles = self._group_by_period(pdf_paths)
+    for pdf_path in pdf_paths:
+        doc_type = _detect_type(pdf_path)
+        if doc_type is None:
+            logger.warning("Could not detect document type for: %s — skipping", pdf_path.name)
+            continue
 
-        for periodo, bundle in bundles.items():
+        parser_fn = _PARSERS[doc_type]
+        logger.info("Parsing %s as %s", pdf_path.name, doc_type)
+        parser_json = parser_fn(str(pdf_path))
+        results[doc_type] = parser_json
 
-            self._validate_bundle(bundle)
+    return results
 
-            if bundle.status == "BLOCKED":
-                continue
 
-            try:
-                self._execute_pipeline(bundle)
-                bundle.status = "OK"
+# ─────────────────────────────────────────────────────────
+# Step 2: Normalize
+# ─────────────────────────────────────────────────────────
 
-            except Exception as e:
-                bundle.status = "BLOCKED"
-                bundle.diagnostics["pipeline_error"] = str(e)
+def _run_normalizers(
+    parsed: Dict[str, Dict[str, Any]],
+) -> List[CanonicalSourceModel]:
+    """
+    Index and normalize each parsed source into a CanonicalSourceModel.
+    """
+    dictionary = load_dictionary_yaml(str(_DICTIONARY_PATH))
+    canonicals: List[CanonicalSourceModel] = []
 
-        return bundles
+    for source_name, parser_json in parsed.items():
+        indexer = _INDEXERS[source_name]()
+        normalizer = _NORMALIZERS[source_name]()
 
-    # -----------------------------------------------------
-    # GROUPING
-    # -----------------------------------------------------
+        indexed = indexer.index(parser_json)
+        canonical = normalizer.normalize(indexed, dictionary)
+        canonicals.append(canonical)
 
-    def _group_by_period(self, pdf_paths: List[str]) -> Dict[str, PeriodBundle]:
+    return canonicals
 
-        bundles: Dict[str, PeriodBundle] = {}
 
-        for path in pdf_paths:
+# ─────────────────────────────────────────────────────────
+# Step 3: Consolidate
+# ─────────────────────────────────────────────────────────
 
-            filename = os.path.basename(path).upper()
-            periodo = self._extract_period(filename)
+def _run_consolidation(
+    canonicals: List[CanonicalSourceModel],
+    raw_sources: Dict[str, Dict[str, Any]],
+) -> ConsolidatedTechnicalModel:
+    """
+    Merge all sources into a single ConsolidatedTechnicalModel.
+    """
+    dictionary = load_dictionary_yaml(str(_DICTIONARY_PATH))
+    concept_keys = list(dictionary.concepts.keys())
 
-            if not periodo:
-                continue
+    consolidator = ConsolidatorV2(
+        sources_canonical=canonicals,
+        sources_raw=raw_sources,
+        concept_keys=concept_keys,
+    )
+    return consolidator.consolidate()
 
-            if periodo not in bundles:
-                bundles[periodo] = PeriodBundle(periodo=periodo)
 
-            bundle = bundles[periodo]
+# ─────────────────────────────────────────────────────────
+# Step 4: Excel generation
+# ─────────────────────────────────────────────────────────
 
-            if "F931" in filename:
-                bundle.f931 = path
-            elif "BORRADOR" in filename:
-                bundle.borrador = path
-            elif "ASIENTO" in filename:
-                bundle.asiento = path
+def _run_excel(
+    consolidated: ConsolidatedTechnicalModel,
+    template_path: Path,
+    output_path: Path,
+) -> Path:
+    """
+    Write the consolidated data into an Excel file copied from the template.
+    Returns the output path.
+    """
+    consolidated_dict = asdict(consolidated)
 
-        return bundles
+    loader = ExcelLoader(
+        template_path=str(template_path),
+        consolidated_json=consolidated_dict,
+    )
+    loader.build_from_template(str(output_path))
+    return output_path
 
-    def _extract_period(self, filename: str) -> Optional[str]:
-        # YYYY-MM o YYYYMM
-        match = re.search(r"(20\d{2})[-_]?(\d{2})", filename)
-        if match:
-            year, month = match.groups()
-            return f"{year}-{month}"
 
-        # MM-YY
-        match_alt = re.search(r"(\d{2})[-_](\d{2})", filename)
-        if match_alt:
-            month, year_short = match_alt.groups()
-            year = f"20{year_short}"
-            return f"{year}-{month}"
+# ─────────────────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────────────────
 
-        # MMYYYY (ej: 052025)
-        match_compact = re.search(r"(\d{2})(20\d{2})", filename)
-        if match_compact:
-            month, year = match_compact.groups()
-            return f"{year}-{month}"
+def process_period(
+    pdf_paths: List[Path],
+    period: str,
+    template_path: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
+) -> Path:
+    """
+    Execute the full pipeline for a single accounting period.
 
-        return None
-    # -----------------------------------------------------
-    # VALIDATION
-    # -----------------------------------------------------
+    Parameters
+    ----------
+    pdf_paths : list[Path]
+        Paths to the PDF files (F931, Borrador, Asiento).
+    period : str
+        Period in ISO format, e.g. "2025-05".
+    template_path : Path, optional
+        Path to the Excel template. Defaults to project-root "Px Laboral Template.xlsx".
+    output_dir : Path, optional
+        Directory for the output Excel. Defaults to backend/output/.
 
-    def _validate_bundle(self, bundle: PeriodBundle):
+    Returns
+    -------
+    Path
+        Absolute path to the generated Excel file.
 
-        missing = []
+    Raises
+    ------
+    FileNotFoundError
+        If the template is missing.
+    ValueError
+        If no PDFs could be parsed.
+    """
+    # Resolve template
+    template = Path(template_path) if template_path else _DEFAULT_TEMPLATE
+    if not template.exists():
+        raise FileNotFoundError(f"Excel template not found: {template}")
 
-        if not bundle.f931:
-            missing.append("F931")
-        if not bundle.borrador:
-            missing.append("BORRADOR")
-        if not bundle.asiento:
-            missing.append("ASIENTO")
+    # Resolve output directory
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent / "output"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-        if missing:
-            bundle.status = "BLOCKED"
-            bundle.diagnostics["missing_documents"] = missing
+    # ── Step 1: Parse ──
+    logger.info("Step 1/4: Parsing %d PDF(s)", len(pdf_paths))
+    parsed = _run_parsers([Path(p) for p in pdf_paths])
 
-    # -----------------------------------------------------
-    # PIPELINE
-    # -----------------------------------------------------
+    if not parsed:
+        raise ValueError("No PDFs could be parsed. Check filenames contain 'f931', 'borrador', or 'asiento'.")
 
-    def _execute_pipeline(self, bundle: PeriodBundle):
+    # ── Step 2: Normalize ──
+    logger.info("Step 2/4: Normalizing %d source(s)", len(parsed))
+    canonicals = _run_normalizers(parsed)
 
-        periodo = bundle.periodo
+    if not canonicals:
+        raise ValueError("Normalization produced no canonical models.")
 
-        # 1️⃣ limpiar output antes de procesar
-        self._clean_output_jsons()
+    # ── Step 3: Consolidate ──
+    logger.info("Step 3/4: Consolidating")
+    consolidated = _run_consolidation(canonicals, parsed)
 
-        # 2️⃣ crear carpeta temporal para este periodo
-        periodo_input_dir = self.temp_input_dir / periodo
-        if periodo_input_dir.exists():
-            shutil.rmtree(periodo_input_dir)
-        periodo_input_dir.mkdir(parents=True)
+    # Persist consolidated JSON for audit trail
+    consolidated_dict = asdict(consolidated)
+    consolidated_json_path = output_dir / f"consolidated_{period}.json"
+    with open(consolidated_json_path, "w", encoding="utf-8") as f:
+        json.dump(consolidated_dict, f, ensure_ascii=False, indent=2)
 
-        # 3️⃣ copiar PDFs
-        shutil.copy(bundle.f931, periodo_input_dir)
-        shutil.copy(bundle.borrador, periodo_input_dir)
-        shutil.copy(bundle.asiento, periodo_input_dir)
+    # ── Step 4: Excel ──
+    logger.info("Step 4/4: Generating Excel")
+    excel_filename = f"Px_Laboral_{period}.xlsx"
+    excel_path = output_dir / excel_filename
+    _run_excel(consolidated, template, excel_path)
 
-        # 4️⃣ ejecutar pipeline
-        self._run_parser(periodo_input_dir)
-        self._run_normalizer()
-        self._run_consolidator()
-
-        # 5️⃣ validar consolidated
-        consolidated_path = self.output_dir / f"consolidated_{periodo}.json"
-
-        if not consolidated_path.exists():
-            raise Exception(f"No se generó consolidated_{periodo}.json")
-
-        # 6️⃣ manifest
-        manifest = {
-            "periodo": periodo,
-            "sources": {
-                "f931": bundle.f931,
-                "borrador": bundle.borrador,
-                "asiento": bundle.asiento,
-            }
-        }
-
-        manifest_path = self.output_dir / f"sources_manifest_{periodo}.json"
-
-        with open(manifest_path, "w") as f:
-            json.dump(manifest, f, indent=2)
-
-        # 7️⃣ limpiar temp
-        shutil.rmtree(periodo_input_dir)
-
-    # -----------------------------------------------------
-    # SCRIPT RUNNERS
-    # -----------------------------------------------------
-
-    def _run_parser(self, input_dir: Path):
-
-        subprocess.run(
-            [
-                "python",
-                "run_parser.py",
-                "--input",
-                str(input_dir),
-                "--output",
-                str(self.output_dir)
-            ],
-            check=True
-        )
-
-    def _run_normalizer(self):
-
-        subprocess.run(
-            [
-                "python",
-                "run_normalizer.py"
-            ],
-            check=True
-        )
-
-    def _run_consolidator(self):
-
-        subprocess.run(
-            [
-                "python",
-                "run_consolidator.py"
-            ],
-            check=True
-        )
-
-    # -----------------------------------------------------
-    # HELPERS
-    # -----------------------------------------------------
-
-    def _clean_output_jsons(self):
-
-        for file in self.output_dir.glob("*.json"):
-            file.unlink()
+    logger.info("Pipeline complete: %s", excel_path)
+    return excel_path

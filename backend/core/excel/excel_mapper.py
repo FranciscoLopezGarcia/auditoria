@@ -16,7 +16,7 @@ import re
 import yaml
 import unicodedata
 from typing import Optional, Any
-
+from pathlib import Path
 
 def normalize(text: str) -> str:
     """Normaliza texto: lowercase, sin acentos, sin espacios extra."""
