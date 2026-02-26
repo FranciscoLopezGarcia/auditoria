@@ -6,8 +6,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnText = document.querySelector(".btn-text");
     const btnLoader = document.getElementById("btnLoader");
     const statusAlert = document.getElementById("statusAlert");
+    const excelUpload = document.getElementById("excelUpload");
+    const excelFile = document.getElementById("excelFile");
+    const modeRadios = document.querySelectorAll('input[name="mode"]');
 
     let selectedFiles = [];
+
+    // --- Mode Selector ---
+    modeRadios.forEach(radio => {
+        radio.addEventListener("change", (e) => {
+            excelUpload.style.display = e.target.value === "update" ? "block" : "none";
+            if (e.target.value === "new") {
+                excelFile.value = "";
+            }
+        });
+    });
 
     // --- Drag and Drop Events ---
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -81,6 +94,12 @@ document.addEventListener("DOMContentLoaded", () => {
             const formData = new FormData();
             selectedFiles.forEach(file => formData.append("files", file));
 
+            // Si está en modo update y hay Excel seleccionado, adjuntarlo
+            const selectedMode = document.querySelector('input[name="mode"]:checked').value;
+            if (selectedMode === "update" && excelFile.files[0]) {
+                formData.append("existing_excel", excelFile.files[0]);
+            }
+
             const response = await fetch("http://127.0.0.1:8000/process", {
                 method: "POST",
                 body: formData
@@ -91,13 +110,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 try {
                     const errorData = await response.json();
                     errorMsg = errorData.detail || errorData.message || errorMsg;
-                } catch(e) {}
+                } catch (e) { }
                 throw new Error(errorMsg);
             }
 
             // Descarga automática del PDF/Excel retornado
             const blob = await response.blob();
-            
+
             // Intentar extraer el nombre del archivo del header Content-Disposition
             const contentDisposition = response.headers.get('Content-Disposition');
             let filename = "Papeles_de_Trabajo_F931.xlsx";
@@ -113,16 +132,16 @@ document.addEventListener("DOMContentLoaded", () => {
             a.style.display = 'none';
             a.href = downloadUrl;
             a.download = filename;
-            
+
             document.body.appendChild(a);
             a.click();
-            
+
             // Clean up
             window.URL.revokeObjectURL(downloadUrl);
             a.remove();
 
             showStatus("¡Procesamiento exitoso! La descarga ha comenzado.", "success");
-            
+
             // Limpiar la lista de archivos después del éxito
             selectedFiles = [];
             updateFileList();
@@ -139,7 +158,7 @@ document.addEventListener("DOMContentLoaded", () => {
         processBtn.disabled = isLoading || selectedFiles.length === 0;
         btnText.style.display = isLoading ? "none" : "block";
         btnLoader.style.display = isLoading ? "block" : "none";
-        
+
         // Disable file dropzone interaction during loading
         dropArea.style.pointerEvents = isLoading ? "none" : "auto";
         const removeBtns = document.querySelectorAll(".file-remove");
