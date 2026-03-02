@@ -409,7 +409,10 @@ def _extract_seccion_I(lines: list[str]) -> dict:
             "tipo_concepto": "a_pagar",
         }
 
+    print("---- BLOQUE SS ----")
+    print(bloque[:500])
     return result
+
 
 
 def _extract_seccion_II(lines: list[str]) -> dict:
