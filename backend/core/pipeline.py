@@ -57,12 +57,11 @@ _DEFAULT_TEMPLATE = Path(__file__).resolve().parent.parent.parent / "Px Laboral 
 # ─────────────────────────────────────────────────────────
 
 def _detect_type(pdf_path: Path) -> Optional[str]:
-    """Detect document type from filename. Returns 'f931', 'borrador', 'asiento', or None."""
     name = pdf_path.name.lower()
+    if "borrador" in name or "borra" in name:  # ← primero, siempre
+        return "borrador"
     if "f931" in name or "931" in name:
         return "f931"
-    if "borrador" in name or "borra" in name:
-        return "borrador"
     if "asiento" in name:
         return "asiento"
     return None

@@ -88,19 +88,13 @@ def _run_ocr(pdf_path: str) -> str:
 # ==========================
 
 def load_document(pdf_path: str) -> Tuple[str, bool]:
-    """
-    Devuelve:
-        text (str)
-        used_ocr (bool)
-    """
 
-    # Intentar extracción normal
     native_text = _extract_text_native(pdf_path)
 
     if _has_text_layer(native_text):
+        print(f"[document_loader] {pdf_path} → USANDO TEXTO NATIVO")
         return native_text, False
 
-    # Fallback OCR
+    print(f"[document_loader] {pdf_path} → USANDO OCR")
     ocr_text = _run_ocr(pdf_path)
-
     return ocr_text, True
