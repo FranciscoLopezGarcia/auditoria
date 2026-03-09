@@ -47,16 +47,28 @@ def extract_text_pymupdf(pdf_path: str) -> tuple[list[str], int]:
 
 def extract_text(pdf_path: str) -> tuple[list[str], int]:
     """
-    Intenta pdfplumber primero; si falla, cae a pymupdf.
+    Extrae texto del PDF usando:
+    - Capa nativa si existe
+    - OCR fallback si no existe
+
+    Devuelve (lines, num_pages)
     """
+    from backend.core.document_loader import load_document
+    import fitz
+
+    # Obtener texto (con OCR si hace falta)
+    text, used_ocr = load_document(pdf_path)
+
+    # Contar páginas con PyMuPDF (más liviano que pdfplumber)
     try:
-        return extract_text_pdfplumber(pdf_path)
-    except ImportError:
-        logger.warning("pdfplumber no disponible, usando pymupdf como fallback")
-        return extract_text_pymupdf(pdf_path)
-    except Exception as e:
-        logger.error(f"Error con pdfplumber: {e}. Intentando pymupdf...")
-        return extract_text_pymupdf(pdf_path)
+        with fitz.open(pdf_path) as doc:
+            num_pages = len(doc)
+    except Exception:
+        num_pages = 0
+
+    lines = text.splitlines()
+
+    return lines, num_pages
 
 
 def extract_words_with_coords(pdf_path: str) -> list[dict]:

@@ -57,12 +57,11 @@ _DEFAULT_TEMPLATE = Path(__file__).resolve().parent.parent.parent / "Px Laboral 
 # ─────────────────────────────────────────────────────────
 
 def _detect_type(pdf_path: Path) -> Optional[str]:
-    """Detect document type from filename. Returns 'f931', 'borrador', 'asiento', or None."""
     name = pdf_path.name.lower()
+    if "borrador" in name or "borra" in name:  # ← primero, siempre
+        return "borrador"
     if "f931" in name or "931" in name:
         return "f931"
-    if "borrador" in name or "borra" in name:
-        return "borrador"
     if "asiento" in name:
         return "asiento"
     return None
@@ -166,6 +165,7 @@ def _run_excel(
     consolidated: ConsolidatedTechnicalModel,
     template_path: Path,
     output_path: Path,
+    existing_excel_path: Optional[Path] = None,
 ) -> Path:
     """
     Write the consolidated data into an Excel file copied from the template.
@@ -177,7 +177,11 @@ def _run_excel(
         template_path=str(template_path),
         consolidated_json=consolidated_dict,
     )
-    loader.build_from_template(str(output_path))
+    if existing_excel_path and existing_excel_path.exists():
+        shutil.copy2(str(existing_excel_path), str(output_path))
+        loader.update_existing(str(output_path))
+    else:
+        loader.build_from_template(str(output_path))
     return output_path
 
 
@@ -190,6 +194,7 @@ def process_period(
     period: str,
     template_path: Optional[Path] = None,
     output_dir: Optional[Path] = None,
+    existing_excel: Optional[Path] = None,
 ) -> Path:
     """
     Execute the full pipeline for a single accounting period.
@@ -256,7 +261,7 @@ def process_period(
     logger.info("Step 4/4: Generating Excel")
     excel_filename = f"Px_Laboral_{period}.xlsx"
     excel_path = output_dir / excel_filename
-    _run_excel(consolidated, template, excel_path)
+    _run_excel(consolidated, template, excel_path, existing_excel)
 
     logger.info("Pipeline complete: %s", excel_path)
     return excel_path
