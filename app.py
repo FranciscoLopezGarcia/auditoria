@@ -1,4 +1,3 @@
-import os
 import re
 import shutil
 import tempfile
@@ -9,10 +8,14 @@ from collections import defaultdict
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 # Pipeline
 from backend.core.pipeline import process_period
+
+
+BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="Px Laboral Automation API")
 
@@ -75,6 +78,19 @@ def group_pdfs_by_period(paths: List[Path]):
 
 
 # ---------------------------------------------------------
+# Frontend / Static
+# ---------------------------------------------------------
+
+@app.get("/", include_in_schema=False)
+def home():
+    return FileResponse(BASE_DIR / "index.html")
+
+
+# Sirve archivos estáticos como /static/style.css y /static/main.js
+app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
+
+
+# ---------------------------------------------------------
 # API
 # ---------------------------------------------------------
 
@@ -83,7 +99,6 @@ def process_endpoint(
     files: List[UploadFile] = File(...),
     existing_excel: Optional[UploadFile] = File(None),
 ):
-
     if not files:
         raise HTTPException(status_code=400, detail="No se enviaron archivos.")
 
@@ -91,11 +106,9 @@ def process_endpoint(
     temp_dir_path = Path(temp_dir)
 
     try:
-
         # -------------------------------------------------
         # Guardar PDFs
         # -------------------------------------------------
-
         pdf_paths = []
 
         for file in files:
@@ -108,7 +121,6 @@ def process_endpoint(
         # -------------------------------------------------
         # Guardar Excel existente si viene
         # -------------------------------------------------
-
         excel_input_path = None
 
         if existing_excel and existing_excel.filename:
@@ -121,7 +133,6 @@ def process_endpoint(
         # -------------------------------------------------
         # Agrupar PDFs por período
         # -------------------------------------------------
-
         groups = group_pdfs_by_period(pdf_paths)
 
         # ordenar periodos cronológicamente
@@ -132,9 +143,7 @@ def process_endpoint(
         # -------------------------------------------------
         # Ejecutar pipeline por período
         # -------------------------------------------------
-
         for period in ordered_periods:
-
             print(f"\n===== Procesando periodo {period} =====")
 
             excel_path = process_period(
@@ -146,7 +155,6 @@ def process_endpoint(
         # -------------------------------------------------
         # Validar resultado
         # -------------------------------------------------
-
         if not excel_path or not Path(excel_path).exists():
             raise HTTPException(
                 status_code=500,
@@ -156,7 +164,6 @@ def process_endpoint(
         # -------------------------------------------------
         # Descargar Excel
         # -------------------------------------------------
-
         return FileResponse(
             path=excel_path,
             filename=Path(excel_path).name,

@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generador F931 - Px Laboral</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 
 <body>
@@ -30,7 +30,6 @@
 
             <div id="fileList" class="file-list"></div>
 
-            <!-- Selector de modo -->
             <div class="mode-selector" id="modeSelector">
                 <label>
                     <input type="radio" name="mode" value="new" checked> Generar nuevo
@@ -40,7 +39,6 @@
                 </label>
             </div>
 
-            <!-- Input Excel (oculto por defecto) -->
             <div class="excel-upload" id="excelUpload" style="display: none;">
                 <label for="excelFile">Subir Excel existente:</label>
                 <input type="file" id="excelFile" accept=".xlsx,.xls">
@@ -55,7 +53,7 @@
         <div id="statusAlert" class="status-alert" style="display: none;"></div>
     </main>
 
-    <script src="main.js"></script>
+    <script src="/static/main.js"></script>
 </body>
 
 </html>
