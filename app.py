@@ -16,6 +16,7 @@ from backend.core.pipeline import process_period
 
 
 BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"  # <-- nuevo
 
 app = FastAPI(title="Px Laboral Automation API")
 
@@ -83,13 +84,11 @@ def group_pdfs_by_period(paths: List[Path]):
 
 @app.get("/", include_in_schema=False)
 def home():
-    return FileResponse(BASE_DIR / "index.html")
+    return FileResponse(FRONTEND_DIR / "index.html")  # <-- cambiado
 
 
 # Sirve archivos estáticos como /static/style.css y /static/main.js
-STATIC_DIR = BASE_DIR
-
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")  # <-- cambiado
 
 
 # ---------------------------------------------------------
