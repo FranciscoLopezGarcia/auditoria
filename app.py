@@ -87,7 +87,9 @@ def home():
 
 
 # Sirve archivos estáticos como /static/style.css y /static/main.js
-app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
+STATIC_DIR = BASE_DIR
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ---------------------------------------------------------
