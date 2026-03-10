@@ -1,3 +1,4 @@
+import os
 import fitz  # PyMuPDF
 import pytesseract
 from pdf2image import convert_from_path
@@ -15,7 +16,6 @@ from typing import Tuple
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Ruta a Tesseract dentro de deps
-# ⚠️  Verificar que tesseract.exe esté exactamente en esta ruta
 pytesseract.pytesseract.tesseract_cmd = str(
     _PROJECT_ROOT / "deps" / "tesseract" / "tesseract.exe"
 )
@@ -24,6 +24,10 @@ pytesseract.pytesseract.tesseract_cmd = str(
 POPPLER_PATH = str(
     _PROJECT_ROOT / "deps" / "poppler" / "poppler-25.07.0" / "Library" / "bin"
 )
+
+# En Windows, registrar la carpeta de poppler para que Python encuentre sus DLLs
+if hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(POPPLER_PATH)
 
 # Umbral mínimo de texto para considerar que el PDF tiene capa de texto
 TEXT_THRESHOLD = 300
