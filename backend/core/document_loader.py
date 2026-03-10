@@ -1,7 +1,6 @@
 import os
 import fitz  # PyMuPDF
 import pytesseract
-from pdf2image import convert_from_path
 import cv2
 import numpy as np
 from pathlib import Path
@@ -19,15 +18,6 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 pytesseract.pytesseract.tesseract_cmd = str(
     _PROJECT_ROOT / "deps" / "tesseract" / "tesseract.exe"
 )
-
-# Ruta a Poppler dentro de deps
-POPPLER_PATH = str(
-    _PROJECT_ROOT / "deps" / "poppler" / "poppler-25.07.0" / "Library" / "bin"
-)
-
-# En Windows, registrar la carpeta de poppler para que Python encuentre sus DLLs
-if hasattr(os, "add_dll_directory"):
-    os.add_dll_directory(POPPLER_PATH)
 
 # Umbral mínimo de texto para considerar que el PDF tiene capa de texto
 TEXT_THRESHOLD = 300
@@ -62,7 +52,6 @@ def _preprocess_image_for_ocr(image):
     img = np.array(image)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Binarización adaptativa
     thresh = cv2.adaptiveThreshold(
         gray,
         255,
@@ -76,29 +65,27 @@ def _preprocess_image_for_ocr(image):
 
 
 # ==========================
-# OCR
+# OCR — renderizado con PyMuPDF, sin poppler
 # ==========================
 
 def _run_ocr(pdf_path: str) -> str:
-    """Ejecuta OCR con Tesseract sobre cada página."""
+    """Renderiza cada página con fitz y ejecuta Tesseract. No usa poppler."""
     text_content = []
 
-    # Usamos fitz para contar páginas y saltear el pdfinfo de pdf2image
-    with fitz.open(pdf_path) as _doc:
-        num_pages = len(_doc)
+    with fitz.open(pdf_path) as doc:
+        for page in doc:
+            # Renderizar página a imagen (300 DPI equivalente: matrix 300/72 ≈ 4.17)
+            mat = fitz.Matrix(300 / 72, 300 / 72)
+            pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
 
-    pages = convert_from_path(
-        pdf_path,
-        dpi=300,
-        poppler_path=POPPLER_PATH,
-        first_page=1,
-        last_page=num_pages,
-    )
+            # Convertir a numpy array para OpenCV
+            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
+                pix.height, pix.width, pix.n
+            )
 
-    for page in pages:
-        processed = _preprocess_image_for_ocr(page)
-        ocr_text = pytesseract.image_to_string(processed, lang="spa")
-        text_content.append(ocr_text)
+            processed = _preprocess_image_for_ocr(img)
+            ocr_text = pytesseract.image_to_string(processed, lang="spa")
+            text_content.append(ocr_text)
 
     return "\n".join(text_content)
 
