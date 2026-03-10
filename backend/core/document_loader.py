@@ -83,10 +83,16 @@ def _run_ocr(pdf_path: str) -> str:
     """Ejecuta OCR con Tesseract sobre cada página."""
     text_content = []
 
+    # Usamos fitz para contar páginas y saltear el pdfinfo de pdf2image
+    with fitz.open(pdf_path) as _doc:
+        num_pages = len(_doc)
+
     pages = convert_from_path(
         pdf_path,
         dpi=300,
-        poppler_path=POPPLER_PATH
+        poppler_path=POPPLER_PATH,
+        first_page=1,
+        last_page=num_pages,
     )
 
     for page in pages:
