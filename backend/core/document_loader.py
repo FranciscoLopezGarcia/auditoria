@@ -3,17 +3,27 @@ import pytesseract
 from pdf2image import convert_from_path
 import cv2
 import numpy as np
+from pathlib import Path
 from typing import Tuple
 
 # ==========================
-# CONFIGURACIÓN EXPLÍCITA
+# RUTAS A DEPS (relativas al proyecto)
 # ==========================
 
-# Ruta a Tesseract (ajustada a tu máquina)
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Raíz del proyecto (donde está app.py)
+# document_loader.py está en backend/core/ → subimos 2 niveles
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-# Ruta a Poppler (ajustada a tu máquina)
-POPPLER_PATH = r"C:\poppler\poppler-25.12.0\Library\bin"
+# Ruta a Tesseract dentro de deps
+# ⚠️  Verificar que tesseract.exe esté exactamente en esta ruta
+pytesseract.pytesseract.tesseract_cmd = str(
+    _PROJECT_ROOT / "deps" / "tesseract" / "tesseract.exe"
+)
+
+# Ruta a Poppler dentro de deps
+POPPLER_PATH = str(
+    _PROJECT_ROOT / "deps" / "poppler" / "poppler-25.07.0" / "Library" / "bin"
+)
 
 # Umbral mínimo de texto para considerar que el PDF tiene capa de texto
 TEXT_THRESHOLD = 300
